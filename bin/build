@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+go build -o bin/server $@ -gcflags 'all=-N -l' cmd/server/main.go && \
+go build -o bin/migrate $@ -gcflags 'all=-N -l' cmd/migrate/main.go
