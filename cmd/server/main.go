@@ -1,85 +1,71 @@
 package main
 
 import (
-	"encoding/json"
-	"entities/pkg/schema"
-	"github.com/gorilla/mux"
-	"github.com/jinzhu/gorm"
+	"context"
+	appHttp "entities/pkg/http"
+	"entities/pkg/publisher"
+	"entities/pkg/subscriber"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
-
-	dbUrl := os.Getenv(`DATABASE_URL`)
-	db, err := gorm.Open("postgres", dbUrl)
+	logfile, err := os.OpenFile(`error.log`, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 
 	if err != nil {
-		panic(err)
+		log.Panic(err)
 	}
 
-	defer db.Close()
+	defer logfile.Close()
 
-	router := mux.NewRouter()
+	log.SetOutput(io.MultiWriter(os.Stderr, logfile))
 
-	router.HandleFunc(`/expensive-entities`, func(writer http.ResponseWriter, request *http.Request) {
-		user := schema.User{}
-		body, err := ioutil.ReadAll(request.Body)
+	publisherServer := &http.Server{Addr: `:8081`}
+	publisher.Setup(publisherServer)
+	publisherServer.Handler = http.HandlerFunc(appHttp.SetErrorHandler(publisherServer.Handler, appHttp.DefaultErrorHandler))
 
-		defer request.Body.Close()
-
-		if err != nil {
-			panic(err)
-		}
-
-		err = json.Unmarshal(body, &user)
+	go func() {
+		err = publisherServer.ListenAndServe()
 
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
+	}()
 
-		err = db.Create(&user).Error
+	subscriberServer := &http.Server{Addr: `:8082`}
+	subscriber.Setup(subscriberServer)
+	subscriberServer.Handler = http.HandlerFunc(appHttp.SetErrorHandler(subscriberServer.Handler, appHttp.DefaultErrorHandler))
+
+	go func() {
+		err = subscriberServer.ListenAndServe()
 
 		if err != nil {
-			panic(err)
+			log.Println(err)
 		}
+	}()
 
-		writer.WriteHeader(http.StatusOK)
-		writer.Header().Set("Content-Type", "application/json")
-		jsonData, err := json.Marshal(user)
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGHUP)
 
-		if err != nil {
-			panic(err)
-		}
+	sig := <-sigChan
 
-		writer.Write(jsonData)
-	}).Methods(http.MethodPost).Headers("Content-Type", "application/json")
-
-	router.HandleFunc(`/entities/{id}`, func(writer http.ResponseWriter, request *http.Request) {
-		user := schema.User{}
-
-		db.Find(&user, `id = ?`, mux.Vars(request)[`id`])
-
-		if user.Id == `` {
-			writer.WriteHeader(http.StatusNotFound)
-		}
-
-		writer.WriteHeader(http.StatusOK)
-		writer.Header().Set("Content-Type", "application/json")
-		jsonData, err := json.Marshal(user)
-
-		if err != nil {
-			panic(err)
-		}
-
-		writer.Write(jsonData)
-	}).Methods(http.MethodGet)
-
-	err = http.ListenAndServe(`:8081`, router)
-
-	if err != nil {
-		panic(err)
+	switch sig {
+	case syscall.SIGINT:
+		log.Println(`SIGINT received`)
+	case syscall.SIGHUP:
+		log.Println(`SIGHUP received`)
 	}
+
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+
+	publisherServer.Shutdown(ctx)
+	subscriberServer.Shutdown(ctx)
+
+	time.Sleep(1 * time.Second)
 }

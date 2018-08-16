@@ -56,6 +56,14 @@
   revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
   version = "v1.2.0"
 
+[[projects]]
+  branch = "master"
+  digest = "1:0c088044c1c1ee83e723692442df4fec9b3f2e57f7a99773485c97adfbc31695"
+  name = "github.com/streadway/amqp"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "70e15c650864f4fc47f5d3c82ea117285480895d"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
@@ -64,6 +72,7 @@
     "github.com/jinzhu/gorm",
     "github.com/jinzhu/gorm/dialects/postgres",
     "github.com/satori/go.uuid",
+    "github.com/streadway/amqp",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
